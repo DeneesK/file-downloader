@@ -7,6 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/DeneesK/file-downloader/internal/app/model"
+	"github.com/DeneesK/file-downloader/internal/app/router"
 )
 
 const shutdownTimeout = time.Second * 1
@@ -18,19 +21,30 @@ type Logger interface {
 	Error(args ...interface{})
 }
 
-type APP struct {
-	srv *http.Server
-	log Logger
+type TaskService interface {
+	CreateTask(ctx context.Context) (string, error)
+	AddLinks(ctx context.Context, taskID string, links []string) error
+	GetTask(ctx context.Context, taskID string) (*model.Task, error)
+	GetNumberActiveTasks() int
+	Start()
 }
 
-func NewApp(addr string, log Logger) *APP {
+type APP struct {
+	srv         *http.Server
+	log         Logger
+	taskService TaskService
+}
+
+func NewApp(addr string, log Logger, taskService TaskService) *APP {
+	r := router.NewRouter(taskService, log)
 	s := http.Server{
 		Addr:    addr,
-		Handler: nil,
+		Handler: r,
 	}
 	return &APP{
-		srv: &s,
-		log: log,
+		srv:         &s,
+		log:         log,
+		taskService: taskService,
 	}
 }
 
@@ -44,6 +58,8 @@ func (a *APP) Run() {
 	defer stop()
 
 	a.log.Infoln("starting application, server listening on", a.srv.Addr)
+
+	go a.taskService.Start()
 
 	go func() {
 		err := a.srv.ListenAndServe()

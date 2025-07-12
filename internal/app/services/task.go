@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/DeneesK/file-downloader/internal/app/model"
@@ -12,6 +15,13 @@ import (
 )
 
 var ErrTooManyTasks = errors.New("server busy: too many active tasks")
+var ErrNotValidExaction = errors.New("not valid exaction")
+
+var allowedExtensions = map[string]struct{}{
+	".pdf":  {},
+	".jpeg": {},
+	".jpg":  {},
+}
 
 type TaskStorage interface {
 	Store(ctx context.Context, task *model.Task) error
@@ -33,33 +43,36 @@ type Logger interface {
 }
 
 type taskService struct {
-	active     int
-	tasksLimit int
-	linksLimit int
-	m          sync.RWMutex
-	taskStore  TaskStorage
-	zip        ZipService
-	log        Logger
+	activeTasks int
+	tasksLimit  int
+	linksLimit  int
+	taskQueue   chan string
+	wg          sync.WaitGroup
+	m           sync.RWMutex
+	taskStore   TaskStorage
+	zip         ZipService
+	log         Logger
 }
 
 func NewTaskService(store TaskStorage, log Logger, tasksLimit, linksLimit int, zip ZipService) *taskService {
 	return &taskService{
-		active:     0,
-		taskStore:  store,
-		log:        log,
-		tasksLimit: tasksLimit,
-		linksLimit: linksLimit,
-		zip:        zip,
+		activeTasks: 0,
+		taskStore:   store,
+		log:         log,
+		tasksLimit:  tasksLimit,
+		linksLimit:  linksLimit,
+		zip:         zip,
+		taskQueue:   make(chan string, tasksLimit),
 	}
 }
 
 func (s *taskService) CreateTask(ctx context.Context) (string, error) {
-	s.m.Lock()
-	defer s.m.Unlock()
-
-	if s.active >= s.tasksLimit {
+	s.m.RLock()
+	if s.activeTasks >= s.tasksLimit {
 		return "", ErrTooManyTasks
 	}
+	defer s.m.RUnlock()
+	s.incrementActiveTasks()
 
 	id := uuid.NewString()
 
@@ -69,12 +82,20 @@ func (s *taskService) CreateTask(ctx context.Context) (string, error) {
 		return "", err
 	}
 
+	go func() {
+		s.taskQueue <- task.ID
+	}()
+
 	return id, nil
 }
 
 func (s *taskService) AddLinks(ctx context.Context, taskID string, links []string) error {
+	if !(s.isAllowedExtension(links)) {
+		return ErrNotValidExaction
+	}
+
 	if len(links) > s.linksLimit {
-		return fmt.Errorf("too many links, links limit per task is %d", s.linksLimit)
+		return fmt.Errorf("too many files, file limit per task is %d", s.linksLimit)
 	}
 
 	task, err := s.taskStore.Get(ctx, taskID)
@@ -83,21 +104,54 @@ func (s *taskService) AddLinks(ctx context.Context, taskID string, links []strin
 	}
 
 	if len(task.Links) >= s.linksLimit {
-		return fmt.Errorf("too many links in task with ID %s", taskID)
+		return fmt.Errorf("too many files in task with ID %s", taskID)
 	}
 
 	task.Links = append(task.Links, links...)
 
-	s.taskStore.Update(ctx, task)
-
-	if len(task.Links) == s.linksLimit {
-		go s.processTask(ctx, taskID)
-	}
-
-	return nil
+	return s.taskStore.Update(ctx, task)
 }
 
-func (s *taskService) SetStatus(ctx context.Context, taskID string, status string) error {
+func (s *taskService) GetTask(ctx context.Context, taskID string) (*model.Task, error) {
+	task, err := s.taskStore.Get(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &task, nil
+}
+
+func (s *taskService) Start() {
+	s.log.Infoln("task service started")
+	for task := range s.taskQueue {
+		go s.processTask(task)
+	}
+}
+
+func (s *taskService) Shutdown() {
+	s.log.Infoln("task service try to gracefully shutdown")
+	close(s.taskQueue)
+	s.wg.Wait()
+	s.log.Infoln("task service gracefully shutdown")
+}
+
+func (s *taskService) GetNumberActiveTasks() int {
+	return len(s.taskQueue)
+}
+
+func (s *taskService) incrementActiveTasks() {
+	s.m.Lock()
+	s.activeTasks++
+	s.m.Unlock()
+}
+
+func (s *taskService) decrementActiveTasks() {
+	s.m.Lock()
+	s.activeTasks--
+	s.m.Unlock()
+}
+
+func (s *taskService) setStatus(ctx context.Context, taskID string, status string) error {
 	task, err := s.taskStore.Get(ctx, taskID)
 	if err != nil {
 		return err
@@ -107,78 +161,55 @@ func (s *taskService) SetStatus(ctx context.Context, taskID string, status strin
 	return s.taskStore.Update(ctx, task)
 }
 
-func (s *taskService) GetStatus(ctx context.Context, taskID string) (string, error) {
-	task, err := s.taskStore.Get(ctx, taskID)
-	if err != nil {
-		return "", err
-	}
-	return task.Status, nil
-}
-
-func (s *taskService) GetNumberActiveTasks() int {
-	s.m.RLock()
-	n := s.active
-	s.m.Unlock()
-	return n
-}
-
-func (s *taskService) incrementActiveTasks() {
-	s.m.Lock()
-	s.active++
-	s.m.Unlock()
-}
-
-func (s *taskService) decrementActiveTasks() {
-	s.m.Lock()
-	s.active--
-	s.m.Unlock()
-}
-
-func (s *taskService) processTask(ctx context.Context, taskID string) {
-	s.incrementActiveTasks()
+func (s *taskService) processTask(taskID string) {
 	defer s.decrementActiveTasks()
+	s.log.Infoln("started process of task ID ", taskID)
+	s.setStatus(context.Background(), taskID, model.StatusRunning)
 
-	task, err := s.taskStore.Get(ctx, taskID)
-	if err != nil {
-		s.log.Errorf("failed to find task with ID: %s", err)
-		return
-	}
-
-	if len(task.Links) < s.linksLimit {
-		return
-	}
-
-	s.log.Infoln("started task with ID ", taskID)
-
-	task.Status = model.StatusRunning
-	s.taskStore.Update(ctx, task)
-
-	downloadedFiles := make([]string, 0, 3)
-	for _, link := range task.Links {
-		path, err := downloader.DownloadFile(link)
+	for {
+		task, err := s.taskStore.Get(context.Background(), taskID)
 		if err != nil {
-			e := fmt.Sprintf("failed to download %v", err)
-			task.FailedLinks[link] = e
-			s.taskStore.Update(ctx, task)
-			continue
+			s.log.Errorf("during process of task ID ", taskID)
 		}
-		downloadedFiles = append(downloadedFiles, path)
+
+		if len(task.FailedLinks) == s.linksLimit {
+			task.Status = model.StatusFailed
+			s.taskStore.Update(context.Background(), task)
+			return
+		} else if len(task.FailedLinks)+len(task.DownloadedFiles) == s.linksLimit {
+			task.Status = model.StatusDone
+			s.taskStore.Update(context.Background(), task)
+			return
+		}
+
+		for _, l := range task.Links {
+			_, ok := task.FailedLinks[l]
+			if !ok {
+				filepath, err := downloader.DownloadFile(l)
+				if err != nil {
+					s.log.Errorf("during process task ID %s failed to download file %s", taskID, err)
+					task.FailedLinks[l] = fmt.Sprintf("%s", err)
+					s.taskStore.Update(context.Background(), task)
+				}
+				task.DownloadedFiles = append(task.DownloadedFiles, filepath)
+			}
+
+		}
+	}
+}
+
+func (s *taskService) isAllowedExtension(links []string) bool {
+	for _, l := range links {
+		u, err := url.Parse(l)
+		if err != nil {
+			return false
+		}
+		ext := strings.ToLower(filepath.Ext(u.Path))
+		_, ok := allowedExtensions[ext]
+		if !ok {
+			return false
+		}
 	}
 
-	if len(downloadedFiles) == 0 {
-		task.Status = model.StatusFailed
-		s.taskStore.Update(ctx, task)
-		return
-	}
-
-	archivePath, err := s.zip.createZipArchive(downloadedFiles)
-	if err != nil {
-		task.Status = model.StatusFailed
-		s.taskStore.Update(ctx, task)
-		return
-	}
-
-	task.Status = model.StatusDone
-	task.Archive = archivePath
-	s.taskStore.Update(ctx, task)
+	return true
 }
