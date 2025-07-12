@@ -6,7 +6,7 @@ import (
 	"github.com/DeneesK/file-downloader/internal/app"
 	"github.com/DeneesK/file-downloader/internal/app/conf"
 	"github.com/DeneesK/file-downloader/internal/app/logger"
-	"github.com/DeneesK/file-downloader/internal/app/repository"
+	"github.com/DeneesK/file-downloader/internal/app/services"
 	"github.com/DeneesK/file-downloader/internal/app/storage/memorystorage"
 )
 
@@ -16,14 +16,14 @@ func main() {
 	defer log.Sync()
 
 	storage := memorystorage.NewMemoryStorage()
-	rep, err := repository.NewRepository(storage)
-	if err != nil {
-		log.Fatalf("failed to initialized repository: %s", err)
-	}
+
 	ctx, close := context.WithCancel(context.Background())
 	defer close()
-	defer rep.Close(ctx)
+	defer storage.Close(ctx) // в memory storage ctx не нужен, но на будущее если поменяем реализацию и заменим на ДБ
 
-	app := app.NewApp(config.ServerAddr, log)
+	zipService := services.NewZipService(config.ArchiveDir)
+	taskService := services.NewTaskService(storage, log, config.MaxActiveTasks, config.MaxLinksPerTask, zipService)
+
+	app := app.NewApp(config.ServerAddr, log, taskService)
 	app.Run()
 }

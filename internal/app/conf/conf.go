@@ -6,7 +6,7 @@ import (
 )
 
 type ServerConf struct {
-	MaxFilesPerTask int
+	MaxLinksPerTask int
 	MaxActiveTasks  int
 	ServerAddr      string
 	Env             string
@@ -20,7 +20,7 @@ func init() {
 	flag.StringVar(&cfg.Env, "env", "dev", "environment 'dev' or 'prod'")
 	flag.StringVar(&cfg.Env, "dir", "static/archives", "dir for created archives")
 	flag.IntVar(&cfg.MaxActiveTasks, "tasks", 3, "limit of tasks per user")
-	flag.IntVar(&cfg.MaxFilesPerTask, "files", 3, "limit of files per task")
+	flag.IntVar(&cfg.MaxLinksPerTask, "links", 3, "limit of links per task")
 }
 
 func MustLoad() *ServerConf {

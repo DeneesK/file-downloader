@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/DeneesK/file-downloader/internal/app/model"
+	"github.com/DeneesK/file-downloader/internal/app/storage"
 )
 
 type MemoryStorage struct {
@@ -18,22 +19,28 @@ func NewMemoryStorage() *MemoryStorage {
 	}
 }
 
-func (s *MemoryStorage) Store(ctx context.Context, id string, value *model.Task) error {
+func (s *MemoryStorage) Store(ctx context.Context, value *model.Task) error {
 	s.m.Lock()
 	defer s.m.Unlock()
+	if s.isExists(value.ID) {
+		return storage.ErrNotUniqueVallation
+	}
 	return nil
 }
 
-func (s *MemoryStorage) Get(ctx context.Context, id string) (*model.Task, error) {
+func (s *MemoryStorage) Get(ctx context.Context, id string) (model.Task, error) {
 	s.m.RLock()
 	defer s.m.RUnlock()
-	return nil, nil
+	if !(s.isExists(id)) {
+		return model.Task{}, storage.ErrNotFound
+	}
+	return model.Task{}, nil
 }
 
-func (s *MemoryStorage) Update(ctx context.Context, task *model.Task) error {
+func (s *MemoryStorage) Update(ctx context.Context, task model.Task) error {
 	s.m.Lock()
 	defer s.m.Unlock()
-	s.storage[task.ID] = task
+	s.storage[task.ID] = &task
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package model
 
 const (
+	StatusCreated string = "created"
 	StatusPending string = "pending"
 	StatusRunning string = "running"
 	StatusDone    string = "done"
@@ -8,8 +9,9 @@ const (
 )
 
 type Task struct {
-	ID      string
-	Status  string
-	Links   []string
-	Archive string
+	ID          string
+	Status      string
+	Archive     string
+	Links       []string
+	FailedLinks map[string]string
 }
