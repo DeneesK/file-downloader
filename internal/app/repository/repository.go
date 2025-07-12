@@ -36,6 +36,6 @@ func (rep *Repository) PingStorage(ctx context.Context) error {
 	return rep.storage.Ping(ctx)
 }
 
-func (rep *Repository) CloseStorage(ctx context.Context) error {
+func (rep *Repository) Close(ctx context.Context) error {
 	return rep.storage.Close(ctx)
 }

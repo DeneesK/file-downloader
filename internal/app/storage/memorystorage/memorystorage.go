@@ -9,25 +9,25 @@ import (
 
 type MemoryStorage struct {
 	m       sync.RWMutex
-	storage map[string][]*model.Task
+	storage map[string]*model.Task
 }
 
 func NewMemoryStorage() *MemoryStorage {
 	return &MemoryStorage{
-		storage: make(map[string][]*model.Task),
+		storage: make(map[string]*model.Task),
 	}
 }
 
-func (s *MemoryStorage) Store(ctx context.Context, id, value *model.Task) error {
+func (s *MemoryStorage) Store(ctx context.Context, id string, value *model.Task) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 	return nil
 }
 
-func (s *MemoryStorage) Get(ctx context.Context, id string) ([]*model.Task, error) {
+func (s *MemoryStorage) Get(ctx context.Context, id string) (*model.Task, error) {
 	s.m.RLock()
 	defer s.m.RUnlock()
-	return []*model.Task{}, nil
+	return nil, nil
 }
 
 func (s *MemoryStorage) Ping(ctx context.Context) error {
