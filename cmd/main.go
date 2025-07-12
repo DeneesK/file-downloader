@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 
+	"github.com/DeneesK/file-downloader/internal/app"
 	"github.com/DeneesK/file-downloader/internal/app/conf"
 	"github.com/DeneesK/file-downloader/internal/app/logger"
 	"github.com/DeneesK/file-downloader/internal/app/repository"
@@ -23,4 +24,6 @@ func main() {
 	defer close()
 	defer rep.Close(ctx)
 
+	app := app.NewApp(config.ServerAddr, log)
+	app.Run()
 }

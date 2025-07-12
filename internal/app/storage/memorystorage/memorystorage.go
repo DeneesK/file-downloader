@@ -30,10 +30,22 @@ func (s *MemoryStorage) Get(ctx context.Context, id string) (*model.Task, error)
 	return nil, nil
 }
 
+func (s *MemoryStorage) Update(ctx context.Context, task *model.Task) error {
+	s.m.Lock()
+	defer s.m.Unlock()
+	s.storage[task.ID] = task
+	return nil
+}
+
 func (s *MemoryStorage) Ping(ctx context.Context) error {
 	return nil
 }
 
 func (s *MemoryStorage) Close(ctx context.Context) error {
 	return nil
+}
+
+func (s *MemoryStorage) isExists(id string) bool {
+	_, ok := s.storage[id]
+	return ok
 }
