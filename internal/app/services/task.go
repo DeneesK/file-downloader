@@ -67,12 +67,12 @@ func NewTaskService(store TaskStorage, log Logger, tasksLimit, linksLimit int, z
 }
 
 func (s *taskService) CreateTask(ctx context.Context) (string, error) {
-	s.m.RLock()
+	s.m.Lock()
 	if s.activeTasks >= s.tasksLimit {
 		return "", ErrTooManyTasks
 	}
-	defer s.m.RUnlock()
-	s.incrementActiveTasks()
+	s.activeTasks++
+	s.m.Unlock()
 
 	id := uuid.NewString()
 
@@ -90,12 +90,11 @@ func (s *taskService) CreateTask(ctx context.Context) (string, error) {
 }
 
 func (s *taskService) AddLinks(ctx context.Context, taskID string, links []string) error {
-	if !(s.isAllowedExtension(links)) {
-		return ErrNotValidExaction
-	}
-
 	if len(links) > s.linksLimit {
 		return fmt.Errorf("too many files, file limit per task is %d", s.linksLimit)
+	}
+	if !(s.isAllowedExtension(links)) {
+		return ErrNotValidExaction
 	}
 
 	task, err := s.taskStore.Get(ctx, taskID)
@@ -117,7 +116,6 @@ func (s *taskService) GetTask(ctx context.Context, taskID string) (*model.Task, 
 	if err != nil {
 		return nil, err
 	}
-
 	return &task, nil
 }
 
@@ -136,13 +134,10 @@ func (s *taskService) Shutdown() {
 }
 
 func (s *taskService) GetNumberActiveTasks() int {
-	return len(s.taskQueue)
-}
-
-func (s *taskService) incrementActiveTasks() {
-	s.m.Lock()
-	s.activeTasks++
-	s.m.Unlock()
+	s.m.RLock()
+	c := s.activeTasks
+	s.m.RUnlock()
+	return c
 }
 
 func (s *taskService) decrementActiveTasks() {
@@ -163,38 +158,51 @@ func (s *taskService) setStatus(ctx context.Context, taskID string, status strin
 
 func (s *taskService) processTask(taskID string) {
 	defer s.decrementActiveTasks()
+	ctx := context.Background()
 	s.log.Infoln("started process of task ID ", taskID)
-	s.setStatus(context.Background(), taskID, model.StatusRunning)
+	s.setStatus(ctx, taskID, model.StatusRunning)
 
 	for {
-		task, err := s.taskStore.Get(context.Background(), taskID)
+		task, err := s.taskStore.Get(ctx, taskID)
 		if err != nil {
-			s.log.Errorf("during process of task ID ", taskID)
+			s.log.Errorf("during process of task ID %s error %v", taskID, err)
 		}
 
 		if len(task.FailedLinks) == s.linksLimit {
 			task.Status = model.StatusFailed
-			s.taskStore.Update(context.Background(), task)
+			s.taskStore.Update(ctx, task)
 			return
 		} else if len(task.FailedLinks)+len(task.DownloadedFiles) == s.linksLimit {
+			archive, err := s.zip.createZipArchive(task.DownloadedFiles)
+			if err != nil {
+				s.log.Errorf("during process of task ID %s error %v", taskID, err)
+				task.Status = model.StatusFailed
+				s.taskStore.Update(ctx, task)
+				return
+			}
+			task.Archive = archive
 			task.Status = model.StatusDone
-			s.taskStore.Update(context.Background(), task)
+			s.taskStore.Update(ctx, task)
 			return
 		}
 
 		for _, l := range task.Links {
-			_, ok := task.FailedLinks[l]
-			if !ok {
-				filepath, err := downloader.DownloadFile(l)
-				if err != nil {
-					s.log.Errorf("during process task ID %s failed to download file %s", taskID, err)
-					task.FailedLinks[l] = fmt.Sprintf("%s", err)
-					s.taskStore.Update(context.Background(), task)
-				}
-				task.DownloadedFiles = append(task.DownloadedFiles, filepath)
+			filepath, err := downloader.DownloadFile(l)
+			if err != nil {
+				s.log.Errorf("during process task ID %s failed to download file %v", taskID, err)
+				task.FailedLinks[l] = fmt.Sprintf("%s", err)
+				s.taskStore.Update(context.Background(), task)
 			}
-
+			task.DownloadedFiles = append(task.DownloadedFiles, filepath)
+			task.Links = task.Links[:0]
+			err = s.taskStore.Update(context.Background(), task)
+			if err != nil {
+				s.log.Errorf("during process task ID %s error %s", taskID, err)
+				s.setStatus(context.Background(), taskID, model.StatusFailed)
+				return
+			}
 		}
+
 	}
 }
 
