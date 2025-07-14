@@ -242,8 +242,6 @@ func TestGetTask_Success(t *testing.T) {
 
 	w = httptest.NewRecorder()
 	reqURL := fmt.Sprintf("/task/%s", task.ID)
-	fmt.Println(task)
-	fmt.Println(reqURL)
 	r := httptest.NewRequest(http.MethodGet, reqURL, nil)
 	req = r.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, &chi.Context{
 		URLParams: chi.RouteParams{
