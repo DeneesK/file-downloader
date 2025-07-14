@@ -20,7 +20,7 @@ func NewZipService(archiveDir string) *zipService {
 	return &zipService{archiveDir: archiveDir}
 }
 
-func (s *zipService) createZipArchive(files []string) (string, error) {
+func (s *zipService) CreateZipArchive(files []string) (string, error) {
 	archiveName := filepath.Join(s.archiveDir, uuid.NewString()+".zip")
 	out, err := os.Create(archiveName)
 	if err != nil {

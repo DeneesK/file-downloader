@@ -33,7 +33,7 @@ type TaskStorage interface {
 }
 
 type ZipService interface {
-	createZipArchive(files []string) (string, error)
+	CreateZipArchive(files []string) (string, error)
 }
 
 type Logger interface {
@@ -175,7 +175,7 @@ func (s *taskService) processTask(taskID string) {
 			s.taskStore.Update(ctx, task)
 			return
 		} else if len(task.FailedLinks)+len(task.DownloadedFiles) == s.linksLimit {
-			archive, err := s.zip.createZipArchive(task.DownloadedFiles)
+			archive, err := s.zip.CreateZipArchive(task.DownloadedFiles)
 			if err != nil {
 				s.log.Errorf("during process of task ID %s error %v", taskID, err)
 				task.Status = model.StatusFailed
