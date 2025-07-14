@@ -2,6 +2,8 @@
 
 [![Tests](https://github.com/DeneesK/zip-downloader-11-07-2025/actions/workflows/zip-downloader-tests.yml/badge.svg)](https://github.com/DeneesK/zip-downloader-11-07-2025/actions/workflows/zip-downloader-tests.yml)
 
+![Go version](https://img.shields.io/badge/go-1.22-blue)
+
 Сервис для скачивания файлов по ссылкам и архивации их в ZIP.
 
 Принимает ссылки на `.pdf`, `.jpeg`, `.jpg` файлы, скачивает их и архивирует. Поддерживает ограничение по количеству одновременных задач и файлов в задаче. Предназначен для демонстрации слоистой архитектуры, очередей задач и in-memory-хранилища.
