@@ -27,6 +27,7 @@ type TaskService interface {
 	GetTask(ctx context.Context, taskID string) (*model.Task, error)
 	GetNumberActiveTasks() int
 	Start()
+	Shutdown()
 }
 
 type APP struct {
@@ -71,6 +72,7 @@ func (a *APP) Run() {
 	<-ctx.Done()
 
 	a.log.Infoln("application shutdown process...")
+	a.taskService.Shutdown()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := a.srv.Shutdown(shutdownCtx); err != nil {

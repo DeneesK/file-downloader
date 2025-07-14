@@ -12,6 +12,7 @@ type Task struct {
 	Status          string            `json:"status"`
 	Archive         string            `json:"archive,omitempty"`
 	Links           []string          `json:"-"`
+	LinksNumber     int               `json:"-"`
 	DownloadedFiles []string          `json:"-"`
 	FailedLinks     map[string]string `json:"failed_files,omitempty"`
 }

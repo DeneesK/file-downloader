@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -53,7 +54,7 @@ func AddLinks(taskService TaskService, log Logger) http.HandlerFunc {
 		}
 
 		err := taskService.AddLinks(ctx, id, links.Links)
-		if err == services.ErrNotValidExaction {
+		if errors.Is(err, services.ErrNotValidExaction) || errors.Is(err, services.ErrTooManyFiles) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		} else if err == storage.ErrNotFound {
@@ -82,11 +83,7 @@ func GetTask(taskService TaskService, log Logger) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		if task.Status == model.StatusDone {
-			w.WriteHeader(http.StatusOK)
-		} else {
-			w.WriteHeader(http.StatusNoContent)
-		}
+		w.WriteHeader(http.StatusOK)
 		err = json.NewEncoder(w).Encode(task)
 		if err != nil {
 			errorString := fmt.Sprintf("failed to encode task to json: %s", err.Error())

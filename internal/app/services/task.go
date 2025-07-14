@@ -16,6 +16,7 @@ import (
 
 var ErrTooManyTasks = errors.New("server busy: too many active tasks")
 var ErrNotValidExaction = errors.New("not valid exaction")
+var ErrTooManyFiles = errors.New("too many files per task")
 
 var allowedExtensions = map[string]struct{}{
 	".pdf":  {},
@@ -91,7 +92,7 @@ func (s *taskService) CreateTask(ctx context.Context) (string, error) {
 
 func (s *taskService) AddLinks(ctx context.Context, taskID string, links []string) error {
 	if len(links) > s.linksLimit {
-		return fmt.Errorf("too many files, file limit per task is %d", s.linksLimit)
+		return ErrTooManyFiles
 	}
 	if !(s.isAllowedExtension(links)) {
 		return ErrNotValidExaction
@@ -102,11 +103,12 @@ func (s *taskService) AddLinks(ctx context.Context, taskID string, links []strin
 		return err
 	}
 
-	if len(task.Links) >= s.linksLimit {
-		return fmt.Errorf("too many files in task with ID %s", taskID)
+	if task.LinksNumber >= s.linksLimit {
+		return ErrTooManyFiles
 	}
 
 	task.Links = append(task.Links, links...)
+	task.LinksNumber++
 
 	return s.taskStore.Update(ctx, task)
 }

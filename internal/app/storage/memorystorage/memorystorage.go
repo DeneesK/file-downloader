@@ -25,6 +25,7 @@ func (s *MemoryStorage) Store(ctx context.Context, value *model.Task) error {
 	if s.isExists(value.ID) {
 		return storage.ErrNotUniqueVallation
 	}
+	s.storage[value.ID] = value
 	return nil
 }
 
@@ -34,7 +35,8 @@ func (s *MemoryStorage) Get(ctx context.Context, id string) (model.Task, error) 
 	if !(s.isExists(id)) {
 		return model.Task{}, storage.ErrNotFound
 	}
-	return model.Task{}, nil
+	task := *s.storage[id]
+	return task, nil
 }
 
 func (s *MemoryStorage) Update(ctx context.Context, task model.Task) error {
