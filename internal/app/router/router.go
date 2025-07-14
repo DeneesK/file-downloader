@@ -26,6 +26,8 @@ func NewRouter(taskService TaskService, log Logger) *chi.Mux {
 
 	loggingMiddleware := middlewares.NewLoggingMiddleware(log)
 	r.Use(loggingMiddleware)
-
+	r.Post("/task", CreateTask(taskService, log))
+	r.Patch("/task/{id}", AddLinks(taskService, log))
+	r.Get("/task/{id}", GetTask(taskService, log))
 	return r
 }

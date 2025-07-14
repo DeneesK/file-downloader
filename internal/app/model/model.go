@@ -8,10 +8,10 @@ const (
 )
 
 type Task struct {
-	ID              string `json:"task_id"`
-	Status          string `json:"status"`
-	Archive         string `json:"archive,omitempty"`
-	Links           []string
-	DownloadedFiles []string
+	ID              string            `json:"task_id"`
+	Status          string            `json:"status"`
+	Archive         string            `json:"archive,omitempty"`
+	Links           []string          `json:"-"`
+	DownloadedFiles []string          `json:"-"`
 	FailedLinks     map[string]string `json:"failed_files,omitempty"`
 }
