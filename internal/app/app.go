@@ -26,8 +26,7 @@ type TaskService interface {
 	AddLinks(ctx context.Context, taskID string, links []string) error
 	GetTask(ctx context.Context, taskID string) (*model.Task, error)
 	GetNumberActiveTasks() int
-	Start()
-	Shutdown()
+	Start(ctx context.Context)
 }
 
 type APP struct {
@@ -60,7 +59,7 @@ func (a *APP) Run() {
 
 	a.log.Infoln("starting application, server listening on", a.srv.Addr)
 
-	go a.taskService.Start()
+	go a.taskService.Start(ctx)
 
 	go func() {
 		err := a.srv.ListenAndServe()
@@ -72,7 +71,6 @@ func (a *APP) Run() {
 	<-ctx.Done()
 
 	a.log.Infoln("application shutdown process...")
-	a.taskService.Shutdown()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := a.srv.Shutdown(shutdownCtx); err != nil {
